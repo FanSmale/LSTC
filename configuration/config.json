@@ -1,0 +1,153 @@
+{
+	"lstc":{
+		"common":{
+			"crossNum":5,
+			"dc":0.4,
+			"boundedTrainRounds":600,
+			"enhancementThreshold":0.001,
+			"controlRadio":0.2,
+			"boundR":100,
+			"trainDataMatrix":[],
+			"testDataMatrix":[],
+			"trainLabelMatrix":[],
+			"testLabelMatrix":[],
+			"numInstances":0,
+			"numConditions":0,
+			"numLabels":0,
+			"learningRate":0.001
+		},
+       "default":{
+			"fileName":"../datasets/DataMat/Flags.mat",
+			"outputFileSrcAndName":"../results/Flags.txt",
+			"fullConnectLayerNumNodes":[0, 64, 64],
+			"activators":"sss"
+		},
+		"Art":{
+			"fileName":"../datasets/DataMat/Art.mat",
+			"outputFileSrcAndName":"../results/Art.txt",
+			"fullConnectLayerNumNodes":[0, 128],
+            "controlRatio":0.1,
+			"activators":"ee"
+		},
+		"Birds":{
+			"fileName":"../datasets/DataMat/Birds.mat",
+			"outputFileSrcAndName":"../results/Birds.txt",
+			"fullConnectLayerNumNodes":[0, 128, 128],
+            "controlRatio":0.8,
+			"activators":"eee"
+		},
+		"Business":{
+			"fileName":"../datasets/DataMat/Business.mat",
+			"outputFileSrcAndName":"../results/Business.txt",
+			"fullConnectLayerNumNodes":[0, 64, 64],
+            "controlRatio":0.4,
+			"activators":"eee"
+		},
+		"Cal500":{
+			"fileName":"../datasets/DataMat/Cal500.mat",
+			"outputFileSrcAndName":"../results/Cal500.txt",
+			"fullConnectLayerNumNodes":[0, 128],
+            "controlRatio":0.2,
+			"activators":"oo"
+		},
+		"CHD49":{
+			"fileName":"../datasets/New/CHD49.mat",
+			"outputFileSrcAndName":"../results/CHD49.txt",
+			"fullConnectLayerNumNodes":[0, 128],
+            "controlRatio":1.0,
+			"boundR": 50,
+			"activators":"oo"
+		},
+		"Foodtruck":{
+			"fileName":"../datasets/New/Foodtruck.mat",
+			"outputFileSrcAndName":"../results/Foodtruck.txt",
+			"fullConnectLayerNumNodes":[0, 256],
+            "controlRatio":0.1,
+			"activators":"ss"
+		},
+		"Emotion":{
+			"fileName":"../datasets/DataMat/Emotion.mat",
+			"outputFileSrcAndName":"../results/Emotion.txt",
+			"fullConnectLayerNumNodes":[0, 256, 256],
+            "controlRatio":0.2,
+			"activators":"ccc"
+		},
+		"Enron":{
+			"fileName":"../datasets/DataMat/Enron.mat",
+			"outputFileSrcAndName":"../results/Enron.txt",
+			"fullConnectLayerNumNodes":[0, 128, 128],
+            "controlRatio":0.2,
+			"activators":"ooo"
+		},
+		"Flags":{
+			"fileName":"../datasets/DataMat/Flags.mat",
+			"outputFileSrcAndName":"../results/Flags.txt",
+			"fullConnectLayerNumNodes":[0, 128],
+            "controlRatio":0.2,
+			"activators":"ee"
+		},
+		"GpositiveGO":{
+			"fileName":"../datasets/DataMat/GpositiveGO.mat",
+			"outputFileSrcAndName":"../results/GpositiveGO.txt",
+			"fullConnectLayerNumNodes":[0, 512, 512],
+            "controlRatio":0.2,
+			"activators":"ooo"
+		},
+		"Recreation":{
+			"fileName":"../datasets/DataMat/Recreation.mat",
+			"outputFileSrcAndName":"../results/Recreation.txt",
+			"fullConnectLayerNumNodes":[0, 64],
+			"controlRatio":0.1,
+			"activators":"ee"
+		},
+		"Scene":{
+			"fileName":"../datasets/DataMat/Scene.mat",
+			"outputFileSrcAndName":"../results/Scene.txt",
+			"fullConnectLayerNumNodes":[0, 256, 256],
+            "controlRatio":1.0,
+			"activators":"ooo"
+		},
+		"Image":{
+			"fileName":"../datasets/DataMat/Image.mat",
+			"outputFileSrcAndName":"../results/Image.txt",
+			"fullConnectLayerNumNodes":[0, 512],
+            "controlRatio":0.2,
+			"activators":"sss"
+		},
+		"Social":{
+			"fileName":"../datasets/DataMat/Social.mat",
+			"outputFileSrcAndName":"../results/Social.txt",
+			"fullConnectLayerNumNodes":[0, 128],
+			"controlRatio":1.0,
+			"activators":"oo"
+		},
+		"Society":{
+			"fileName":"../datasets/DataMat/Society.mat",
+			"outputFileSrcAndName":"../results/Society.txt",
+			"fullConnectLayerNumNodes":[0, 128],
+			"controlRatio":0.2,
+			"activators":"oo"
+		},
+		"VirusGO":{
+			"fileName":"../datasets/DataMat/VirusGO.mat",
+			"outputFileSrcAndName":"../results/VirusGO.txt",
+			"fullConnectLayerNumNodes":[0, 128, 128],
+            "controlRatio":0.8,
+			"activators":"uuu"
+		},
+		"WaterQuality":{
+			"fileName": "../datasets/DataMat/WaterQuality.mat",
+			"outputFileSrcAndName":"../results/WaterQuality.txt",
+			"fullConnectLayerNumNodes":[0, 256, 256],
+            "controlRatio":0.1,
+			"activators":"ooo"
+		},
+		"Yeast":{
+			"fileName":"../datasets/DataMat/Yeast.mat",
+			"outputFileSrcAndName":"../results/Yeast.txt",
+			"controlRatio":0.1,
+			"fullConnectLayerNumNodes":[0, 128, 128],
+			"activators":"srs"
+		}
+	}
+}
