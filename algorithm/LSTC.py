@@ -35,10 +35,17 @@ class Lstc:
         self.device = torch.device('cuda')
         self.manhattanDist = torch.nn.PairwiseDistance(p = 1, eps = 0, keepdim = True).to(self.device)
         self.dataset = paraDataSet
+        self.microAUC = 0
+        self.macroAUC = 0
         self.peakF1Score = 0
-        self.auc = 0
         self.NDCG = 0
+        self.HammingLoss = 0
+        self.oneError = 0
+        self.coverage = 0
+        self.RankingLoss = 0
+
         self.runTime = 0
+        self.nnRunTime = 0
 
         print('Global preprocessing...')
         # Global precompute: calculate the global density of each instance and obtain the instance adjacency matrix
@@ -124,6 +131,8 @@ class Lstc:
             tempFullConnectLayerNumNodes[0] = tempNewTrainDataMatrix.shape[1]
             tempFullConnectLayerNumNodes.append(tempNewTrainLabelMatrix.shape[1])
 
+            #################################  training network  #######################################################
+            nnRunTime_Start = time.time()
             localNetwork = TripleLabelAnn(paraLayerNumNodes = tempFullConnectLayerNumNodes,
                                           paraActivators = self.dataset.activators,
                                           paraLearningRate = self.dataset.learningRate,
@@ -150,15 +159,30 @@ class Lstc:
                     [self.dataset.predictLabelMatrix, localNetwork.tempPredictTensor[:, 0:1]], 1)
                 self.dataset.predictLabelMatrixDoublePort = torch.cat(
                     [self.dataset.predictLabelMatrixDoublePort, localNetwork.tempPredictTensor6Port[:, 0:2]], 1)
+            nnRunTime_End = time.time()
+            ############################################################################################################
+            self.nnRunTime += nnRunTime_End - nnRunTime_Start
 
         timerEnd = time.time()
         self.runTime = (timerEnd - timerStart)
-        print("Compute the AUC...")
-        self.auc = self.computeAUC()
+        print("Compute the microAUC...")
+        self.microAUC = self.computeMicroAUC()
+        print("Compute the macroAUC...")
+        self.macroAUC = self.computeMacroAUC()
         print("Compute the Peak F1-score ...")
         self.peakF1Score = self.computepeakF1Score()
         print("Compute the NDCG...")
         self.NDCG = self.computeNDCG()
+        print("Compute the Hamming Loss...")
+        self.HammingLoss = self.computeHammingLoss()
+        print("Compute the OneError")
+        self.oneError = self.computeOneError()
+        print("Compute the Coverage")
+        self.coverage = self.computeCoverage()
+        print("Compute the RankingLoss")
+        self.RankingLoss = self.computeRankingLoss()
+
+
 
     def constructRelevantLabel(self, paraMainLabelIndex, paraLabelMatrix):
         '''
@@ -220,20 +244,153 @@ class Lstc:
                 tempYF1[i] = 2.0 * P * R / (P + R)
         return np.max(tempYF1)
 
-    def computeAUC(self):
+    def computeMicroAUC(self):
         '''
-        Compute the AUC
+        Compute the MicroAUC
 
-        :return: The AUC
+        :return: The MicroAUC
         '''
         tempPredictMatrix = self.dataset.predictLabelMatrixDoublePort
         tempTargetMatrix = self.dataset.testLabelMatrix
 
         tempProbaMatrix = torch.exp(tempPredictMatrix[:, 1::2]) / \
                           (torch.exp(tempPredictMatrix[:, 1::2]) + torch.exp(tempPredictMatrix[:, ::2]))
+
+        # The matrix is compressed into 1 dimension,
+        # then the internal information of the original single label can be ignored.
+        # so the global AUC can be calculated
         tempProbVector = tempProbaMatrix.reshape(-1).cpu().detach().numpy()
         tempTargetVector = tempTargetMatrix.reshape(-1)
         return metrics.roc_auc_score(tempTargetVector, tempProbVector)
+
+    def computeMacroAUC(self):
+        '''
+        Compute the MacroAUC
+
+        :return: The MacroAUC
+        '''
+        tempPredictMatrix = self.dataset.predictLabelMatrixDoublePort
+        tempTargetMatrix = self.dataset.testLabelMatrix
+
+        tempProbaMatrix = torch.exp(tempPredictMatrix[:, 1::2]) / \
+                          (torch.exp(tempPredictMatrix[:, 1::2]) + torch.exp(tempPredictMatrix[:, ::2]))
+        tempProbaMatrix = tempProbaMatrix.cpu().detach().numpy()
+
+        labelNum = tempProbaMatrix.shape[1]
+        aucValue = 0
+
+        # "One Error" needs to judge each row of the label matrix.
+        # If we judge matrix by column, the information may be too little
+        for i in range(labelNum):
+            if np.mean(tempTargetMatrix[:, i]) == 1:
+                aucValue += 1
+            elif np.mean(tempTargetMatrix[:, i]) == 0:
+                aucValue += 0
+            else:
+                aucValue += metrics.roc_auc_score(tempTargetMatrix[:, i], tempProbaMatrix[:, i])
+        return aucValue / labelNum
+
+    def computeOneError(self):
+        '''
+        Compute the One Error
+
+        :return: The One Error
+        '''
+
+        tempPredictMatrix = self.dataset.predictLabelMatrixDoublePort
+        tempTargetMatrix = self.dataset.testLabelMatrix
+
+        tempProbaMatrix = torch.exp(tempPredictMatrix[:, 1::2]) / \
+                          (torch.exp(tempPredictMatrix[:, 1::2]) + torch.exp(tempPredictMatrix[:, ::2]))
+        tempProbaMatrix = tempProbaMatrix.cpu().detach().numpy()
+
+        instanceNum = tempProbaMatrix.shape[0]
+
+        errorNum = 0
+        # "One Error" needs to judge each row of the label matrix.
+        # If we judge matrix by column, the information may be too little.
+        for i in range(instanceNum):
+            # The target label consists only of 0 and 1.
+            # If the sample has no positive label, the sample is not predicted.
+            if np.sum(tempTargetMatrix[i]) == 0:
+                continue
+            index = np.argmax(tempProbaMatrix[i])
+            if tempTargetMatrix[i][index] == 0:
+                errorNum += 1
+        return errorNum * 1.0 / instanceNum
+
+    def computeCoverage(self):
+        '''
+        Compute the Coverage
+
+        :return: the Coverage
+        '''
+
+        tempPredictMatrix = self.dataset.predictLabelMatrixDoublePort
+        tempTargetMatrix = self.dataset.testLabelMatrix
+
+        tempProbaMatrix = torch.exp(tempPredictMatrix[:, 1::2]) / \
+                          (torch.exp(tempPredictMatrix[:, 1::2]) + torch.exp(tempPredictMatrix[:, ::2]))
+        tempProbaMatrix = tempProbaMatrix.cpu().detach().numpy()
+
+        # Subtract 1 when sorting each sample
+        instanceNum = tempTargetMatrix.shape[0]
+        label_index = []
+        for i in range(instanceNum):
+            index = np.where(tempTargetMatrix[i] == 1)[0]
+            label_index.append(index)
+        cover = 0
+        for i in range(instanceNum):
+            index = np.argsort(-tempProbaMatrix[i]).tolist()
+            tmp = 0
+            for item in label_index[i]:    # If the current instance has no positive label, end directly.
+                tmp = max(tmp, index.index(item))
+            cover += tmp
+        coverage = cover * 1.0 / instanceNum
+        return coverage
+
+    def computeHammingLoss(self):
+        '''
+        Compute the Hamming Loss
+
+        :return: the Hamming Loss
+        '''
+
+        tempPredictMatrix = self.dataset.predictLabelMatrixDoublePort
+        tempTargetMatrix = self.dataset.testLabelMatrix
+
+        tempProbaMatrix = torch.exp(tempPredictMatrix[:, 1::2]) / \
+                          (torch.exp(tempPredictMatrix[:, 1::2]) + torch.exp(tempPredictMatrix[:, ::2]))
+        tempProbaMatrix = tempProbaMatrix.cpu().detach().numpy()
+
+        # Set the prediction threshold to 0.5
+        tempProbaMatrix[np.where(tempProbaMatrix >= 0.5)] = 1.0
+        tempProbaMatrix[np.where(tempProbaMatrix < 0.5)] = 0.0
+
+        return metrics.hamming_loss(tempTargetMatrix, tempProbaMatrix)
+
+    def computeRankingLoss(self):
+        '''
+        Compute the Ranking Loss
+
+        :return: the Ranking Loss
+        '''
+
+        tempPredictMatrix = self.dataset.predictLabelMatrixDoublePort
+        tempTargetMatrix = self.dataset.testLabelMatrix
+
+        tempProbaMatrix = torch.exp(tempPredictMatrix[:, 1::2]) / \
+                          (torch.exp(tempPredictMatrix[:, 1::2]) + torch.exp(tempPredictMatrix[:, ::2]))
+        tempProbaMatrix = tempProbaMatrix.cpu().detach().numpy()
+
+        probaMatrix = []
+        targetMatrix = []
+        for index, trueLabel in enumerate(tempTargetMatrix):
+            if np.mean(trueLabel) == 0:  # empty true label have no meaning
+                continue
+            probaMatrix.append(tempProbaMatrix[index])
+            targetMatrix.append(trueLabel)
+        return metrics.label_ranking_loss(np.array(targetMatrix), np.array(probaMatrix))
 
     def computeNDCG(self):
         '''
@@ -530,10 +687,16 @@ def fullTrain(paraDataSetName: str = 'Emotion', isCrossValidation: bool = False)
         prop.trainDataMatrix, prop.trainLabelMatrix, prop.testDataMatrix, prop.testLabelMatrix, prop.numInstances, prop.numConditions, prop.numLabels = matReader(
             prop.fileName)
         tempLstc = Lstc(prop)
-        print("AUC: ", tempLstc.auc)
+        print("microAUC: ", tempLstc.microAUC)
+        print("macroAUC: ", tempLstc.macroAUC)
         print("Peak F1-Score: ", tempLstc.peakF1Score)
         print("NDCG: ", tempLstc.NDCG)
+        print("Hamming Loss: ", tempLstc.HammingLoss)
+        print("oneError: ", tempLstc.oneError)
+        print("Coverage: ", tempLstc.coverage)
+        print("Ranking Loss: ", tempLstc.RankingLoss)
         print('Runtime: ', tempLstc.runTime, "s")
+        print('Total network training time', tempLstc.nnRunTime)
     else:
         kf = KFold(prop.kFoldNum, shuffle=True)
         tempTrainDataMatrix, tempTrainLabelMatrix, tempTestDataMatrix, tempTestLabelMatrix, _, _, _ = matReader(prop.fileName)
@@ -541,9 +704,14 @@ def fullTrain(paraDataSetName: str = 'Emotion', isCrossValidation: bool = False)
         tempDataMatrix = np.vstack((tempTrainDataMatrix, tempTestDataMatrix))
         tempLabelMatrix = np.vstack((tempTrainLabelMatrix, tempTestLabelMatrix))
 
-        aucRecord = np.zeros((prop.kFoldNum, 1))
+        microAUCRecord = np.zeros((prop.kFoldNum, 1))
+        macroAUCRecord = np.zeros((prop.kFoldNum, 1))
         peakF1ScoreRecord = np.zeros((prop.kFoldNum, 1))
         NDCGRecord = np.zeros((prop.kFoldNum, 1))
+        HammingLossRecord = np.zeros((prop.kFoldNum, 1))
+        oneErrorRecord = np.zeros((prop.kFoldNum, 1))
+        coverageRecord = np.zeros((prop.kFoldNum, 1))
+        rankingLossRecord = np.zeros((prop.kFoldNum, 1))
         runtimeRecord = np.zeros((prop.kFoldNum, 1))
 
         for k, (trainIndex, testIndex) in enumerate(kf.split(tempDataMatrix)):
@@ -565,21 +733,35 @@ def fullTrain(paraDataSetName: str = 'Emotion', isCrossValidation: bool = False)
             tempLstc = Lstc(prop)
             #sys.stdout = sys.__stdout__        # open print
 
+            microAUCRecord[k, 0] = tempLstc.microAUC
+            macroAUCRecord[k, 0] = tempLstc.macroAUC
             peakF1ScoreRecord[k,0] = tempLstc.peakF1Score
             NDCGRecord[k,0] = tempLstc.NDCG
-            aucRecord[k, 0] = tempLstc.auc
+            HammingLossRecord[k,0] = tempLstc.HammingLoss
+            oneErrorRecord[k,0] = tempLstc.oneError
+            coverageRecord[k,0] = tempLstc.coverage
+            rankingLossRecord[k,0] = tempLstc.RankingLoss
             runtimeRecord[k, 0] = tempLstc.runTime
 
-            print("AUC: ", tempLstc.auc)
+            print("microAUC: ", tempLstc.microAUC)
+            print("macroAUC: ", tempLstc.macroAUC)
             print("Peak F1-Score: ", tempLstc.peakF1Score)
             print("NDCG: ", tempLstc.NDCG)
+            print("Hamming Loss: ", tempLstc.HammingLoss)
+            print("oneError: ", tempLstc.oneError)
+            print("coverage: ", tempLstc.coverage)
+            print("Ranking Loss: ", tempLstc.RankingLoss)
             print('Runtime: ', tempLstc.runTime, "s")
 
         print("******************* {0}-Fold Cross Validation *****************".format(prop.kFoldNum) )
-        print("AUC: ")
-        print(aucRecord)
-        print("The mean and variance of AUC: ""{0}±{1}".format(
-            round(aucRecord.mean(),4), round(aucRecord.std(),4)))
+        print("microAUC: ")
+        print(microAUCRecord)
+        print("The mean and variance of microAUC: ""{0}±{1}".format(
+            round(microAUCRecord.mean(),4), round(microAUCRecord.std(),4)))
+        print("macroAUC: ")
+        print(macroAUCRecord)
+        print("The mean and variance of macroAUC: ""{0}±{1}".format(
+            round(macroAUCRecord.mean(), 4), round(macroAUCRecord.std(), 4)))
         print("Peak F1-Score: ")
         print(peakF1ScoreRecord)
         print("The mean and variance of peakF1Score: ""{0}±{1}".format(
@@ -588,19 +770,46 @@ def fullTrain(paraDataSetName: str = 'Emotion', isCrossValidation: bool = False)
         print(NDCGRecord)
         print("The mean and variance of NDCG: {0}±{1}".format(
             round(NDCGRecord.mean(),4), round(NDCGRecord.std(),4)))
+        print("Hamming Loss: ")
+        print(HammingLossRecord)
+        print("The mean and variance of hamming loss: {0}±{1}".format(
+            round(HammingLossRecord.mean(), 4), round(HammingLossRecord.std(), 4)))
+        print("One Error: ")
+        print(oneErrorRecord)
+        print("The mean and variance of one error: {0}±{1}".format(
+            round(oneErrorRecord.mean(), 4), round(oneErrorRecord.std(), 4)))
+        print("Coverage: ")
+        print(coverageRecord)
+        print("The mean and variance of coverage: {0}±{1}".format(
+            round(coverageRecord.mean(), 4), round(coverageRecord.std(), 4)))
+        print("Ranking Loss: ")
+        print(rankingLossRecord)
+        print("The mean and variance of ranking loss: {0}±{1}".format(
+            round(rankingLossRecord.mean(), 4), round(rankingLossRecord.std(), 4)))
         print('runtime: ')
         print(runtimeRecord)
         print("The mean and variance of runtime: {0}±{1}".format(
             round(runtimeRecord.mean(),4), round(runtimeRecord.std(),4)))
 
+
         # save to local
         outputContent = paraDataSetName
-        outputContent += "\nAUC is {0}±{1}".format(
-            round(aucRecord.mean(),4), round(aucRecord.std(),4))
-        outputContent += "\nPeak F1-score is {0}±{1}".format(
+        outputContent += "\nmicroAUC is {0}±{1}".format(
+            round(microAUCRecord.mean(),4), round(microAUCRecord.std(),4))
+        outputContent += "\nmacroAUC is {0}±{1}".format(
+            round(macroAUCRecord.mean(), 4), round(macroAUCRecord.std(), 4))
+        outputContent += "\nPeakF1-score is {0}±{1}".format(
             round(peakF1ScoreRecord.mean(), 4), round(peakF1ScoreRecord.std(), 4))
         outputContent += "\nNDCG is {0}±{1}".format(
             round(NDCGRecord.mean(),4), round(NDCGRecord.std(),4))
+        outputContent += "\nHammingLoss is {0}±{1}".format(
+            round(HammingLossRecord.mean(), 4), round(HammingLossRecord.std(), 4))
+        outputContent += "\nOneError is {0}±{1}".format(
+            round(oneErrorRecord.mean(), 4), round(oneErrorRecord.std(), 4))
+        outputContent += "\nCoverage is {0}±{1}".format(
+            round(coverageRecord.mean(), 4), round(coverageRecord.std(), 4))
+        outputContent += "\nRankingLoss is {0}±{1}".format(
+            round(rankingLossRecord.mean(), 4), round(rankingLossRecord.std(), 4))
         outputContent += "\nRuntime is {0}±{1}".format(
             round(runtimeRecord.mean(),4), round(runtimeRecord.std(),4))
 
@@ -649,6 +858,5 @@ if __name__ == '__main__':
     # And the other part is a dataset of text domain:
     # "Art", "Business", "Enron", "Recreation", "Social"
 
-    fullTrain(paraDataSetName = "Flags", isCrossValidation = False)
-
-
+    print(torch.cuda.is_available())
+    fullTrain(paraDataSetName = "Image", isCrossValidation = True)
